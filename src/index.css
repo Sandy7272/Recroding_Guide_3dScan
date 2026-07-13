@@ -143,6 +143,11 @@
   animation: scaleUp 0.45s ease-out forwards;
 }
 
+/* Stagger helper for sequential entrance animations */
+.animation-delay-100 {
+  animation-delay: 100ms;
+}
+
 /* ========================================================= */
 /* OPTIONAL: Instagram Story Progress Bar Animation          */
 /* ========================================================= */

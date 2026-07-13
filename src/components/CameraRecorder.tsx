@@ -1,9 +1,25 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { formatTime } from "@/utils/formatTime";
-import { RotateCw, CheckCircle2, Pause, Play } from "lucide-react";
-import { toast } from "sonner";
+import { RotateCw, CheckCircle2, Pause, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CountdownOverlay } from "./capture/CountdownOverlay";
+import CameraPermissionError from "./capture/CameraPermissionError";
+
+type CameraErrorType = "denied" | "blocked" | "in-use" | "not-found" | "unknown";
+
+// Non-standard camera capabilities/constraints not yet in the TS DOM lib.
+interface ExtendedCapabilities extends MediaTrackCapabilities {
+  focusMode?: string[];
+  imageStabilization?: boolean;
+  zoom?: { min: number; max: number; step?: number };
+}
+interface ExtendedConstraintSet extends MediaTrackConstraintSet {
+  focusMode?: string;
+  exposureMode?: string;
+  whiteBalanceMode?: string;
+  imageStabilization?: boolean;
+  zoom?: number;
+}
 
 // --- Configuration ---
 const ANGLE_DURATION = 30;
@@ -47,7 +63,10 @@ export const CameraRecorder = ({ onRecordingComplete }: CameraRecorderProps) => 
   const [zoomLevel, setZoomLevel] = useState(1);
   const [hasZoom, setHasZoom] = useState(false);
   const [minZoom, setMinZoom] = useState(1);
-  
+
+  // Camera permission / hardware error
+  const [cameraError, setCameraError] = useState<CameraErrorType | null>(null);
+
   const isLandscape = useScreenOrientation();
 
   // --- Voice Assistant ---
@@ -60,32 +79,32 @@ export const CameraRecorder = ({ onRecordingComplete }: CameraRecorderProps) => 
   }, []);
 
   // --- 1. Init Camera ---
-  useEffect(() => {
-    const initCamera = async () => {
+  const initCamera = useCallback(async () => {
       try {
+        setCameraError(null);
+        const advanced: ExtendedConstraintSet[] = [
+          { focusMode: "continuous" },
+          { exposureMode: "continuous" },
+          { whiteBalanceMode: "continuous" },
+          { imageStabilization: true },
+        ];
         const constraints: MediaStreamConstraints = {
-          video: { 
-            facingMode: "environment", 
-            width: { ideal: 1920 }, 
-            height: { ideal: 1080 }, 
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
             frameRate: { ideal: 30, max: 60 },
-            // @ts-ignore
-            advanced: [
-              { focusMode: "continuous" } as any,
-              { exposureMode: "continuous" } as any,
-              { whiteBalanceMode: "continuous" } as any,
-              { imageStabilization: true }
-            ] as any
+            advanced,
           },
-          audio: false, 
+          audio: false,
         };
 
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        
+
         // Apply constraints logic (Zoom, Focus, etc.)
         const track = stream.getVideoTracks()[0];
-        const capabilities = track.getCapabilities() as any;
-        const advancedConstraints: any = {};
+        const capabilities = track.getCapabilities() as ExtendedCapabilities;
+        const advancedConstraints: ExtendedConstraintSet = {};
 
         if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
           advancedConstraints.focusMode = 'continuous';
@@ -114,22 +133,32 @@ export const CameraRecorder = ({ onRecordingComplete }: CameraRecorderProps) => 
           const initialZoom = min < 1 ? min : 1;
           setZoomLevel(initialZoom);
           try {
-            // @ts-ignore
-            await track.applyConstraints({ advanced: [{ zoom: initialZoom }] });
+            await track.applyConstraints({ advanced: [{ zoom: initialZoom }] as ExtendedConstraintSet[] });
           } catch (e) { console.warn("Zoom constraint failed", e); }
         }
       } catch (err) {
         console.error(err);
-        toast.error("Camera access denied");
+        const name = (err as DOMException)?.name;
+        if (name === "NotAllowedError" || name === "SecurityError") {
+          setCameraError("denied");
+        } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+          setCameraError("not-found");
+        } else if (name === "NotReadableError" || name === "AbortError") {
+          setCameraError("in-use");
+        } else {
+          setCameraError("unknown");
+        }
       }
-    };
+  }, []);
+
+  useEffect(() => {
     initCamera();
-    
+
     return () => {
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
       window.speechSynthesis.cancel();
     };
-  }, []);
+  }, [initCamera]);
 
   // --- Controls ---
   const startRecording = () => {
@@ -185,8 +214,7 @@ export const CameraRecorder = ({ onRecordingComplete }: CameraRecorderProps) => 
     }
 
     try {
-      // @ts-ignore
-      await track.applyConstraints({ advanced: [{ zoom: targetZoom }] });
+      await track.applyConstraints({ advanced: [{ zoom: targetZoom }] as ExtendedConstraintSet[] });
       setZoomLevel(targetZoom);
     } catch (e) { console.error("Zoom failed", e); }
   };
@@ -251,6 +279,11 @@ export const CameraRecorder = ({ onRecordingComplete }: CameraRecorderProps) => 
   }, [status, speak, finishRecording]);
 
   const currentPhase = PHASES[currentPhaseIdx];
+
+  // --- Camera blocked / unavailable ---
+  if (cameraError) {
+    return <CameraPermissionError errorType={cameraError} onRetry={initCamera} />;
+  }
 
   return (
     <div className="fixed inset-0 w-full h-[100dvh] bg-black overflow-hidden select-none" style={{ touchAction: 'none' }}>
@@ -339,6 +372,15 @@ export const CameraRecorder = ({ onRecordingComplete }: CameraRecorderProps) => 
               ) : (
                 <Play className="w-8 h-8 fill-current ml-1" />
               )}
+            </button>
+
+            {/* FINISH (STOP) BUTTON — lets the user end early */}
+            <button
+              onClick={finishRecording}
+              aria-label="Finish recording"
+              className="w-12 h-12 rounded-full flex items-center justify-center bg-black/50 backdrop-blur-md border border-white/20 text-white shadow-lg active:scale-95 transition-all hover:bg-black/70"
+            >
+              <Square className="w-5 h-5 fill-current" />
             </button>
           </div>
 

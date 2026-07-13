@@ -12,7 +12,7 @@ const OrientationLock = ({ children }: OrientationLockProps) => {
     const lockOrientation = async () => {
       if (screen.orientation && 'lock' in screen.orientation) {
         try {
-          await (screen.orientation as any).lock("landscape-primary");
+          await screen.orientation.lock("landscape-primary");
         } catch (error) {
           console.warn("Failed to lock screen orientation:", error);
         }
@@ -29,7 +29,7 @@ const OrientationLock = ({ children }: OrientationLockProps) => {
 
     return () => {
       if (screen.orientation && 'unlock' in screen.orientation) {
-        (screen.orientation as any).unlock();
+        screen.orientation.unlock();
       }
       window.removeEventListener("resize", handleOrientationChange);
     };

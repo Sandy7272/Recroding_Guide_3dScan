@@ -1,10 +1,9 @@
-import React, { FC, useEffect, useState, useCallback, useRef } from "react";
+import { FC, useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Volume2,
   VolumeX,
   ChevronRight,
-  ChevronLeft,
   ArrowLeft,
 } from "lucide-react";
 
@@ -62,7 +61,7 @@ const AngleGifTutorial: FC<AngleGifTutorialProps> = ({ angle, onNext, onPrev }) 
   
   // Refs for audio management
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const voiceRetryRef = useRef<NodeJS.Timeout | null>(null);
+  const voiceRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isMuted, setIsMuted] = useState(false);
   const isMutedRef = useRef(false);
@@ -176,10 +175,10 @@ const AngleGifTutorial: FC<AngleGifTutorialProps> = ({ angle, onNext, onPrev }) 
   };
 
   return (
-    <div className="w-full h-screen bg-[#0A0A0A] text-white flex flex-row overflow-hidden font-sans">
+    <div className="w-full h-[100dvh] bg-[#0A0A0A] text-white flex flex-col md:flex-row overflow-hidden font-sans">
 
-      {/* LEFT SIDE: PREVIEW */}
-      <div className="w-[60%] flex justify-center items-center px-4 bg-[#050505]">
+      {/* TOP (mobile) / LEFT (desktop): PREVIEW */}
+      <div className="w-full md:w-[60%] flex-1 md:flex-none md:h-full flex justify-center items-center p-3 md:px-4 bg-[#050505] min-h-0">
         <div className="relative w-full max-w-2xl rounded-2xl bg-gradient-to-br from-[#111] to-[#0A0A0A] border border-[#222] shadow-2xl overflow-hidden">
           <video
             ref={videoRef}
@@ -201,8 +200,8 @@ const AngleGifTutorial: FC<AngleGifTutorialProps> = ({ angle, onNext, onPrev }) 
         </div>
       </div>
 
-      {/* RIGHT SIDE: UI PANEL */}
-      <div className="w-[40%] bg-[#0A0A0A] border-l border-[#222] px-5 py-6 flex flex-col justify-center relative">
+      {/* BOTTOM (mobile) / RIGHT (desktop): UI PANEL */}
+      <div className="w-full md:w-[40%] shrink-0 bg-[#0A0A0A] border-t md:border-t-0 md:border-l border-[#222] px-5 py-5 md:py-6 flex flex-col justify-center relative">
 
         {/* PROGRESS BAR */}
         <div className="flex gap-1.5 mb-6">
