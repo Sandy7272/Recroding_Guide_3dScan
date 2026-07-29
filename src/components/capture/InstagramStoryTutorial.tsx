@@ -3,12 +3,12 @@ import { Check, XCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Make sure these paths are correct in your project folder structure
-import naturalLightingGood from "../../asset/naturalLightingGood.png";
-import naturalLightingBad from "../../asset/naturalLightingBad.png";
-import frameObjectGood from "../../asset/frame-object-good.png";
-import frameObjectBad from "../../asset/frame-object-bad.png";
-import cleanBackgroundGood from "../../asset/cleanBackgroundGood.png";
-import cleanBackgroundBad from "../../asset/cleanBackgroundBad.png";
+import naturalLightingGood from "../../asset/naturalLightingGood.webp";
+import naturalLightingBad from "../../asset/naturalLightingBad.webp";
+import frameObjectGood from "../../asset/frame-object-good.webp";
+import frameObjectBad from "../../asset/frame-object-bad.webp";
+import cleanBackgroundGood from "../../asset/cleanBackgroundGood.webp";
+import cleanBackgroundBad from "../../asset/cleanBackgroundBad.webp";
 
 interface Topic {
   id: number;
