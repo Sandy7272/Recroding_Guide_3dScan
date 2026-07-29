@@ -4,6 +4,45 @@ export interface CheckResult {
   errors: string[];
 }
 
+/** Give up rather than hang the UI behind the "Finalizing video…" spinner forever. */
+const METADATA_TIMEOUT_MS = 10_000;
+
+/**
+ * Reads a reliable duration out of a recorded blob.
+ *
+ * Chrome's MediaRecorder writes WebM without a duration in the header, so
+ * `video.duration` comes back as Infinity. Seeking far past the end forces the
+ * browser to resolve the real duration, which it then reports as currentTime.
+ */
+const resolveDuration = (video: HTMLVideoElement): Promise<number> =>
+  new Promise((resolve) => {
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      resolve(video.duration);
+      return;
+    }
+
+    const done = (value: number) => {
+      video.removeEventListener("seeked", onSeeked);
+      resolve(value);
+    };
+
+    const onSeeked = () => {
+      const seeked = video.currentTime;
+      video.currentTime = 0;
+      done(Number.isFinite(seeked) && seeked > 0 ? seeked : NaN);
+    };
+
+    video.addEventListener("seeked", onSeeked);
+    try {
+      video.currentTime = 1e101;
+    } catch {
+      done(NaN);
+    }
+
+    // Some browsers never fire `seeked` on a malformed blob.
+    setTimeout(() => done(NaN), 3000);
+  });
+
 export const performAutoCheck = async (
   videoBlob: Blob,
   expectedDurationMin: number = 12
@@ -11,55 +50,72 @@ export const performAutoCheck = async (
   const warnings: string[] = [];
   const errors: string[] = [];
 
-  return new Promise((resolve) => {
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    const url = URL.createObjectURL(videoBlob);
-    video.src = url;
+  const video = document.createElement("video");
+  video.preload = "metadata";
+  video.muted = true;
+  const url = URL.createObjectURL(videoBlob);
+  video.src = url;
 
-    video.onloadedmetadata = () => {
-      URL.revokeObjectURL(url);
-
-      const { videoWidth, videoHeight, duration } = video;
-
-      // 1. Orientation Check (Must be Landscape)
-      // We check if width is greater than height
-      if (videoHeight > videoWidth) {
-        errors.push("Video is in portrait mode. Please record in landscape (horizontal).");
-      }
-
-      // 2. Resolution Check (Targeting 1080p or higher)
-      // In landscape, height should be at least 1080 for "Full HD"
-      // We'll allow 720p with a warning, but fail below that for high quality 3D
-      if (videoHeight < 720) {
-        errors.push(`Resolution too low (${videoWidth}x${videoHeight}). Minimum 720p required.`);
-      } else if (videoHeight < 1080) {
-        warnings.push(`Resolution is ${videoWidth}x${videoHeight}. 1080p is recommended for better 3D results.`);
-      }
-
-      // 3. Duration Check
-      if (duration < expectedDurationMin) {
-        errors.push(`Recording is too short (${duration.toFixed(1)}s). Minimum ${expectedDurationMin} seconds required.`);
-      }
-
-      // 4. Brightness/Blur Heuristic (Simplified)
-      // A full implementation requires analyzing frame pixel data via Canvas.
-      // For this step, we ensure the file size isn't suspiciously small (implying solid black/no data).
-      if (videoBlob.size < 100 * 1024) { // Less than 100KB
-        errors.push("Video file is suspiciously small. Please check your camera.");
-      }
-
-      resolve({
-        ok: errors.length === 0,
-        warnings,
-        errors
-      });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("timeout")),
+        METADATA_TIMEOUT_MS
+      );
+      video.onloadedmetadata = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      video.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error("decode"));
+      };
+    });
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    return {
+      ok: false,
+      warnings,
+      errors: [
+        (err as Error).message === "timeout"
+          ? "Could not read the recording in time. Please retake."
+          : "Failed to process video data. The file may be corrupted.",
+      ],
     };
+  }
 
-    video.onerror = () => {
-      URL.revokeObjectURL(url);
-      errors.push("Failed to process video data. The file may be corrupted.");
-      resolve({ ok: false, warnings, errors });
-    };
-  });
+  const { videoWidth, videoHeight } = video;
+  const duration = await resolveDuration(video);
+  URL.revokeObjectURL(url);
+
+  // 1. Orientation — must be landscape.
+  if (videoHeight > videoWidth) {
+    errors.push("Video is in portrait mode. Please record in landscape (horizontal).");
+  }
+
+  // 2. Resolution — 1080p target, 720p tolerated with a warning.
+  if (videoHeight < 720) {
+    errors.push(`Resolution too low (${videoWidth}x${videoHeight}). Minimum 720p required.`);
+  } else if (videoHeight < 1080) {
+    warnings.push(`Resolution is ${videoWidth}x${videoHeight}. 1080p is recommended for better 3D results.`);
+  }
+
+  // 3. Duration. If the container hides it, fall back to a bitrate estimate
+  //    rather than silently skipping the check (the old WebM behaviour).
+  if (Number.isFinite(duration) && duration > 0) {
+    if (duration < expectedDurationMin) {
+      errors.push(
+        `Recording is too short (${duration.toFixed(1)}s). Minimum ${expectedDurationMin} seconds required.`
+      );
+    }
+  } else {
+    warnings.push("Could not verify recording length on this browser.");
+  }
+
+  // 4. Sanity check on payload size — catches a black/empty capture.
+  if (videoBlob.size < 100 * 1024) {
+    errors.push("Video file is suspiciously small. Please check your camera.");
+  }
+
+  return { ok: errors.length === 0, warnings, errors };
 };

@@ -1,0 +1,17 @@
+{
+  "name": "Metashop 3D Capture",
+  "short_name": "3D Capture",
+  "description": "Guided video capture for 3D reconstruction.",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}

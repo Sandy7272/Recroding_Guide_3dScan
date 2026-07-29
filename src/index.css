@@ -41,6 +41,16 @@
     --ring: 153 98% 57%; /* Mint Green */
 
     --radius: 0.75rem;
+
+    /* Referenced by tailwind.config.ts — without these, `bg-neon`,
+       `shadow-neon` etc. silently resolve to transparent. */
+    --neon: 153 98% 57%;
+    --surface: 0 0% 7%;
+    --surface-elevated: 0 0% 12%;
+    --gradient-primary: linear-gradient(135deg, hsl(153 98% 57%), hsl(168 90% 45%));
+    --gradient-dark: linear-gradient(180deg, hsl(0 0% 7%), hsl(0 0% 3.9%));
+    --shadow-neon: 0 0 24px hsl(var(--neon) / 0.35);
+    --shadow-elevated: 0 12px 32px hsl(0 0% 0% / 0.55);
   }
 
   * {
@@ -146,6 +156,21 @@
 /* Stagger helper for sequential entrance animations */
 .animation-delay-100 {
   animation-delay: 100ms;
+}
+
+/* ========================================================= */
+/*   REDUCED MOTION                                          */
+/* ========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ========================================================= */

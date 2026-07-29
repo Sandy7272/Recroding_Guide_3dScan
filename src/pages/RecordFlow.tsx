@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AngleGifTutorial from "../components/capture/AngleGifTutorial";
@@ -16,17 +16,21 @@ import {
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 import { performAutoCheck } from "../utils/autoCheck";
+import { useTutorialSeen } from "../hooks/usePrefs";
 
 // Recording is 4 angles x 30s. Require most of it before accepting the scan.
 const MIN_RECORDING_SECONDS = 100;
 
+const angleNames = ["middle", "top", "bottom", "detail"] as const;
+
 const RecordFlow = () => {
   const navigate = useNavigate();
+  const [tutorialSeen, setTutorialSeen] = useTutorialSeen();
 
-  // --- TUTORIAL STATE (Preserved) ---
-  const [tutorialIndex, setTutorialIndex] = useState(0); // 0=middle, 1=top, 2=bottom, 3=detail
-  const [showTutorial, setShowTutorial] = useState(true);
-  const angleNames: ("middle" | "top" | "bottom" | "detail")[] = ["middle", "top", "bottom", "detail"];
+  // --- TUTORIAL STATE ---
+  const [tutorialIndex, setTutorialIndex] = useState(0);
+  // Repeat users go straight to the camera; the guide stays reachable from Home.
+  const [showTutorial, setShowTutorial] = useState(!tutorialSeen);
 
   // --- RECORDING STATE ---
   const [finalBlob, setFinalBlob] = useState<Blob | null>(null);
@@ -35,31 +39,19 @@ const RecordFlow = () => {
   // Bump to force a fresh CameraRecorder (restarts countdown → recording).
   const [attempt, setAttempt] = useState(0);
 
-  // Lock landscape only when tutorial ends (Camera starts)
-  useEffect(() => {
-    if (!showTutorial && screen.orientation && "lock" in screen.orientation) {
-      screen.orientation.lock("landscape").catch(() => console.log("Orientation lock not supported"));
-    }
-    return () => {
-      if (!showTutorial && screen.orientation && "unlock" in screen.orientation) {
-        screen.orientation.unlock();
-      }
-    };
-  }, [showTutorial]);
-
   // --- TUTORIAL HANDLERS ---
+  const finishTutorial = useCallback(() => {
+    setTutorialSeen(true);
+    setShowTutorial(false);
+  }, [setTutorialSeen]);
+
   const handleTutorialNext = () => {
-    if (tutorialIndex < 3) {
-      setTutorialIndex(tutorialIndex + 1);
-    } else {
-      setShowTutorial(false); // All tutorials done -> Start Camera
-    }
+    if (tutorialIndex < angleNames.length - 1) setTutorialIndex(tutorialIndex + 1);
+    else finishTutorial();
   };
 
   const handleTutorialPrev = () => {
-    if (tutorialIndex > 0) {
-      setTutorialIndex(tutorialIndex - 1);
-    }
+    if (tutorialIndex > 0) setTutorialIndex(tutorialIndex - 1);
   };
 
   // --- RECORDING HANDLERS ---
@@ -68,13 +60,10 @@ const RecordFlow = () => {
     try {
       const result = await performAutoCheck(blob, MIN_RECORDING_SECONDS);
       if (!result.ok) {
-        // Quality gate failed — show the issues and let the user retake.
         setCheckError(result.errors);
         return;
       }
-      if (result.warnings.length > 0) {
-        result.warnings.forEach((w) => toast.warning(w));
-      }
+      result.warnings.forEach((w) => toast.warning(w));
       setFinalBlob(blob);
       toast.success("Capture Complete!");
     } finally {
@@ -84,7 +73,7 @@ const RecordFlow = () => {
 
   const handleRetake = () => {
     setFinalBlob(null);
-    // Note: We stay on the camera screen, we don't go back to tutorials
+    setAttempt((n) => n + 1);
   };
 
   // Dismiss the error modal and remount the camera for a fresh take.
@@ -96,29 +85,33 @@ const RecordFlow = () => {
 
   // --- RENDER: PREVIEW ---
   if (finalBlob) {
-    return <SavePreview videoBlob={finalBlob} onBack={handleRetake} />;
+    return <SavePreview videoBlob={finalBlob} onBack={handleRetake} onDone={() => navigate("/")} />;
   }
 
   // --- RENDER: MAIN FLOW ---
   return (
     <div className="flex flex-col h-[100dvh] bg-black">
-
       {/* ERROR MODAL */}
-      <Dialog open={!!checkError} onOpenChange={retryAfterError}>
+      <Dialog open={!!checkError} onOpenChange={(open) => !open && setCheckError(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center text-destructive gap-2">
               <AlertTriangle /> Recording Issue
             </DialogTitle>
-            <DialogDescription>
-              <ul className="list-disc pl-5 mt-2 text-foreground">
-                {checkError?.map((e, i) => (
-                  <li key={i}>{e}</li>
-                ))}
-              </ul>
-            </DialogDescription>
+            <DialogDescription>We couldn&apos;t accept this scan:</DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+
+          {/* Outside DialogDescription — that renders a <p>, and a <ul> can't nest in one. */}
+          <ul className="list-disc pl-5 text-sm text-foreground space-y-1">
+            {checkError?.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Back home
+            </Button>
             <Button onClick={retryAfterError}>Retake</Button>
           </DialogFooter>
         </DialogContent>
@@ -130,6 +123,7 @@ const RecordFlow = () => {
           angle={angleNames[tutorialIndex]}
           onNext={handleTutorialNext}
           onPrev={handleTutorialPrev}
+          onSkipAll={finishTutorial}
         />
       )}
 
@@ -143,9 +137,13 @@ const RecordFlow = () => {
         </div>
       )}
 
-      {/* 3. CAMERA PHASE (Continuous Mode) */}
-      {!showTutorial && !finalBlob && (
-        <CameraRecorder key={attempt} onRecordingComplete={handleRecordingComplete} />
+      {/* 3. CAMERA PHASE */}
+      {!showTutorial && !checkError && (
+        <CameraRecorder
+          key={attempt}
+          onRecordingComplete={handleRecordingComplete}
+          minSeconds={MIN_RECORDING_SECONDS}
+        />
       )}
     </div>
   );

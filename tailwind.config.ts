@@ -59,7 +59,6 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Restored custom colors
         neon: "hsl(var(--neon))",
         surface: "hsl(var(--surface))",
         "surface-elevated": "hsl(var(--surface-elevated))",
@@ -106,9 +105,11 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "fade-in": "fade-in 0.3s ease-in-out",
-        "slide-up": "slide-up 0.45s cubic-bezier(0.25, 0.8, 0.25, 1) forwards",
-        "scale-in": "scale-in 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards",
+        "fade-in": "fade-in 0.3s ease-in-out both",
+        // `both` (not `forwards`) so a delayed element stays hidden during the
+        // delay instead of flashing visible before the animation starts.
+        "slide-up": "slide-up 0.45s cubic-bezier(0.25, 0.8, 0.25, 1) both",
+        "scale-in": "scale-in 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) both",
         "pulse-neon": "pulse-neon 2s ease-in-out infinite",
       },
     },
